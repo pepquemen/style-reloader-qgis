@@ -68,6 +68,7 @@ class AboutPage(QWidget):
         layout.addWidget(self._make_separator())
 
         # Repository
+
         layout.addWidget(self._make_section_title("🔗 Repository"))
         lbl_repo = QLabel(
             '<a href="https://github.com/pepquemen/style-reloader-qgis">'
