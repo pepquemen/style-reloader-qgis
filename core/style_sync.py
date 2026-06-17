@@ -50,6 +50,15 @@ class StyleSync:
         # Detect SLD version
         version, content_type = SLDExporter.detect_sld_version(sld_content)
 
+        # Check if style has changed
+        current_sld = self.api.get_style_content(layer_name)
+        if current_sld and current_sld.strip() == sld_content.strip():
+            return {
+                'status': self.SKIPPED,
+                'layer': layer_name,
+                'message': 'Style has not changed, skipping upload'
+            }
+
         # Upload style
         success, action, response = self.api.upload_style(
             layer_name, sld_content, content_type
@@ -82,11 +91,39 @@ class StyleSync:
         Sync styles for a list of QGIS layers.
         Returns a list of result dicts and a summary.
         """
-        results = []
+        # No layers in project
+        if not layers:
+            return [], {
+                'total': 0,
+                'success': 0,
+                'skipped': 0,
+                'errors': 0,
+                'message': 'No layers found in project'
+            }
 
-        for layer in layers:
-            if layer.type() != layer.VectorLayer:
-                continue
+        # No vector layers selected
+        vector_layers = [l for l in layers if l.type() == l.VectorLayer]
+        if not vector_layers:
+            return [], {
+                'total': 0,
+                'success': 0,
+                'skipped': 0,
+                'errors': 0,
+                'message': 'No vector layers selected'
+            }
+
+        # No active connection to GeoServer
+        if not self.api.test_connection():
+            return [], {
+                'total': 0,
+                'success': 0,
+                'skipped': 0,
+                'errors': 0,
+                'message': 'No active connection to GeoServer'
+            }
+
+        results = []
+        for layer in vector_layers:
             result = self.sync_layer(layer, only_existing)
             results.append(result)
 
@@ -94,7 +131,25 @@ class StyleSync:
             'total': len(results),
             'success': sum(1 for r in results if r['status'] == self.SUCCESS),
             'skipped': sum(1 for r in results if r['status'] == self.SKIPPED),
-            'errors': sum(1 for r in results if r['status'] == self.ERROR)
+            'errors': sum(1 for r in results if r['status'] == self.ERROR),
+            'message': None
         }
+
+        # Automatic summary message
+        if summary['errors'] == 0 and summary['skipped'] == 0:
+            summary['message'] = (
+                f"All {summary['success']} layers reloaded successfully"
+            )
+        elif summary['errors'] == 0:
+            summary['message'] = (
+                f"{summary['success']} layers reloaded, "
+                f"{summary['skipped']} skipped (no changes)"
+            )
+        else:
+            summary['message'] = (
+                f"{summary['success']} layers reloaded successfully, "
+                f"{summary['errors']} errors, "
+                f"{summary['skipped']} skipped"
+            )
 
         return results, summary
