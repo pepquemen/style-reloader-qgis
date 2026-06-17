@@ -7,21 +7,27 @@ class GeoServerAPI:
     Handles all communication with the GeoServer REST API.
     """
 
-    def __init__(self, url, user, password, workspace):
+    def __init__(self, url, user, password, workspace=None):  # ← workspace opcional
         self.url = url.rstrip('/')
         self.workspace = workspace
         self.auth = HTTPBasicAuth(user, password)
+
+    def set_workspace(self, workspace):
+        """Set or change the active workspace at runtime."""
+        self.workspace = workspace
 
     def test_connection(self):
         """Check if the connection to GeoServer is successful."""
         try:
             r = requests.get(
-                f"{self.url}/rest/workspaces/{self.workspace}.json",
+                f"{self.url}/rest/workspaces.json",  # ← sense workspace
                 auth=self.auth,
                 timeout=5
             )
             return r.status_code == 200
         except requests.exceptions.ConnectionError:
+            return False
+        except Exception:
             return False
 
     def layer_exists(self, layer_name):
@@ -107,4 +113,3 @@ class GeoServerAPI:
         url = f"{self.url}/rest/workspaces/{self.workspace}/styles/{style_name}"
         r = requests.delete(url, auth=self.auth, params={"purge": "true"})
         return r.status_code == 200
-
