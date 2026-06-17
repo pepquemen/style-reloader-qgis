@@ -83,3 +83,28 @@ class GeoServerAPI:
             data = r.json()
             return [w['name'] for w in data['workspaces']['workspace']]
         return []
+
+    def get_style_content(self, style_name):
+        """Get the current SLD content of a style from GeoServer."""
+        url = f"{self.url}/rest/workspaces/{self.workspace}/styles/{style_name}.sld"
+        r = requests.get(url, auth=self.auth)
+        if r.status_code == 200:
+            return r.text
+        return None
+
+    def get_workspace_styles(self):
+        """Get all styles available in the current workspace."""
+        url = f"{self.url}/rest/workspaces/{self.workspace}/styles.json"
+        r = requests.get(url, auth=self.auth)
+        if r.status_code == 200:
+            data = r.json()
+            styles = data.get('styles', {}).get('style', [])
+            return [s['name'] for s in styles]
+        return []
+
+    def delete_style(self, style_name):
+        """Delete a style from GeoServer."""
+        url = f"{self.url}/rest/workspaces/{self.workspace}/styles/{style_name}"
+        r = requests.delete(url, auth=self.auth, params={"purge": "true"})
+        return r.status_code == 200
+
