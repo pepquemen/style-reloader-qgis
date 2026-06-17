@@ -5,6 +5,7 @@ class ConnectionManager:
     """
     Handles saving and loading GeoServer connection credentials
     using QGIS built-in settings system (QgsSettings).
+    Connections are stored without workspace — workspace is selected at runtime.
     """
 
     SETTINGS_KEY = "style_reloader/connections"
@@ -12,15 +13,14 @@ class ConnectionManager:
     def __init__(self):
         self.settings = QgsSettings()
 
-    def save_connection(self, name, url, user, password, workspace):
+    def save_connection(self, name, url, user, password):
         """
-        Save a GeoServer connection to QGIS settings.
+        Save a GeoServer connection to QGIS settings (no workspace).
         """
         self.settings.beginGroup(f"{self.SETTINGS_KEY}/{name}")
         self.settings.setValue("url", url)
         self.settings.setValue("user", user)
         self.settings.setValue("password", password)
-        self.settings.setValue("workspace", workspace)
         self.settings.endGroup()
 
     def load_connection(self, name):
@@ -40,8 +40,7 @@ class ConnectionManager:
             'name': name,
             'url': self.settings.value("url"),
             'user': self.settings.value("user"),
-            'password': self.settings.value("password"),
-            'workspace': self.settings.value("workspace")
+            'password': self.settings.value("password")
         }
         self.settings.endGroup()
         return connection
