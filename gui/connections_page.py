@@ -1,7 +1,7 @@
 from qgis.PyQt.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QListWidget, QPushButton, QMessageBox,
-    QLabel, QSizePolicy
+    QLabel, QSizePolicy, QFrame
 )
 from qgis.PyQt.QtCore import pyqtSignal
 
@@ -24,33 +24,57 @@ class ConnectionsPage(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(6)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
 
-        # Title
+        # ── Title ────────────────────────────────────────
         title = QLabel("Connections")
-        title.setStyleSheet("font-weight: bold; font-size: 13px;")
+        title.setProperty("role", "title")
         layout.addWidget(title)
+
+        subtitle = QLabel(
+            "Manage your saved GeoServer connections. "
+            "Select a connection in the header to work with it."
+        )
+        subtitle.setProperty("role", "subtitle")
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
+
+        # ── Card container ──────────────────────────────
+        card = QFrame()
+        card.setObjectName("card")
+        card.setFrameShape(QFrame.StyledPanel)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(12, 12, 12, 12)
+        card_layout.setSpacing(10)
 
         # List of connections
         self.lst_connections = QListWidget()
         self.lst_connections.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding
         )
-        layout.addWidget(self.lst_connections)
+        card_layout.addWidget(self.lst_connections)
 
-        # Buttons
+        # Buttons row
         btn_row = QHBoxLayout()
-        self.btn_add = QPushButton("+ Add")
-        self.btn_edit = QPushButton("✏ Edit")
-        self.btn_delete = QPushButton("🗑 Delete")
+        btn_row.setSpacing(8)
+
+        self.btn_add = QPushButton("＋  Add")
+        self.btn_edit = QPushButton("✎  Edit")
+        self.btn_delete = QPushButton("🗑  Delete")
+        self.btn_delete.setProperty("danger", "true")
+
         self.btn_edit.setEnabled(False)
         self.btn_delete.setEnabled(False)
+
         btn_row.addWidget(self.btn_add)
         btn_row.addWidget(self.btn_edit)
         btn_row.addWidget(self.btn_delete)
         btn_row.addStretch()
-        layout.addLayout(btn_row)
+
+        card_layout.addLayout(btn_row)
+
+        layout.addWidget(card)
 
     def _setup_connections(self):
         self.btn_add.clicked.connect(self._on_add)

@@ -5,7 +5,7 @@ from qgis.PyQt.QtWidgets import (
     QSizePolicy
 )
 from qgis.PyQt.QtCore import Qt
-from qgis.PyQt.QtGui import QFont, QColor
+from qgis.PyQt.QtGui import QFont
 from qgis.core import QgsProject, QgsMapLayer
 
 from core.style_sync import StyleSync
@@ -13,7 +13,7 @@ from core.style_sync import StyleSync
 
 class ReloadPage(QWidget):
     """
-    Handles layer selection and style reload.
+    Handles layer selection and style reload (publication).
     """
 
     def __init__(self, api=None):
@@ -25,63 +25,93 @@ class ReloadPage(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(6)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
 
-        # ── LLISTA DE CAPES ──────────────────────────────
+        # ── Title ────────────────────────────────────────
+        title = QLabel("Publication")
+        title.setProperty("role", "title")
+        layout.addWidget(title)
+
+        subtitle = QLabel(
+            "Select the layers to publish to GeoServer and reload their styles."
+        )
+        subtitle.setProperty("role", "subtitle")
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
+
+        # ── Layers card ─────────────────────────────────
+        layers_card = QFrame()
+        layers_card.setObjectName("card")
+        layers_card.setFrameShape(QFrame.StyledPanel)
+        layers_layout = QVBoxLayout(layers_card)
+        layers_layout.setContentsMargins(12, 12, 12, 12)
+        layers_layout.setSpacing(10)
+
+        lbl_layers = QLabel("Project layers")
+        lbl_layers.setProperty("role", "section")
+        layers_layout.addWidget(lbl_layers)
+
         self.lst_layers = QListWidget()
         self.lst_layers.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding
         )
-        layout.addWidget(self.lst_layers)
+        layers_layout.addWidget(self.lst_layers)
 
-        # Botons select/deselect
+        # Select / Deselect buttons
         btn_row = QHBoxLayout()
-        self.btn_select_all = QPushButton("Select All")
-        self.btn_deselect_all = QPushButton("Deselect All")
+        btn_row.setSpacing(8)
+        self.btn_select_all = QPushButton("Select all")
+        self.btn_deselect_all = QPushButton("Deselect all")
         btn_row.addWidget(self.btn_select_all)
         btn_row.addWidget(self.btn_deselect_all)
         btn_row.addStretch()
-        layout.addLayout(btn_row)
+        layers_layout.addLayout(btn_row)
 
-        # Separador
-        layout.addWidget(self._make_separator())
+        layout.addWidget(layers_card, stretch=1)
 
-        # ── OPCIONS ──────────────────────────────────────
+        # ── Options card ────────────────────────────────
+        options_card = QFrame()
+        options_card.setObjectName("card")
+        options_card.setFrameShape(QFrame.StyledPanel)
+        options_layout = QVBoxLayout(options_card)
+        options_layout.setContentsMargins(12, 12, 12, 12)
+        options_layout.setSpacing(10)
+
+        lbl_options = QLabel("Options")
+        lbl_options.setProperty("role", "section")
+        options_layout.addWidget(lbl_options)
+
         self.chk_assign_style = QCheckBox("Apply style to layer")
         self.chk_assign_style.setChecked(True)
-        layout.addWidget(self.chk_assign_style)
+        options_layout.addWidget(self.chk_assign_style)
 
-        # Botó reload
-        self.btn_reload = QPushButton("Reload Style")
-        self.btn_reload.setMinimumHeight(40)
-        self.btn_reload.setStyleSheet("""
-            QPushButton {
-                background-color: #00A8D6;
-                color: white;
-                font-weight: bold;
-                border-radius: 4px;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background-color: #0088B0;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-            }
-        """)
-        layout.addWidget(self.btn_reload)
+        self.btn_reload = QPushButton("↻  Reload and apply")
+        self.btn_reload.setProperty("primary", "true")
+        self.btn_reload.setMinimumHeight(38)
+        options_layout.addWidget(self.btn_reload)
 
-        # Separador
-        layout.addWidget(self._make_separator())
+        layout.addWidget(options_card)
 
-        # ── LOG ──────────────────────────────────────────
-        layout.addWidget(QLabel("Log"))
+        # ── Log card ─────────────────────────────────────
+        log_card = QFrame()
+        log_card.setObjectName("card")
+        log_card.setFrameShape(QFrame.StyledPanel)
+        log_layout = QVBoxLayout(log_card)
+        log_layout.setContentsMargins(12, 12, 12, 12)
+        log_layout.setSpacing(8)
+
+        lbl_log = QLabel("Log")
+        lbl_log.setProperty("role", "section")
+        log_layout.addWidget(lbl_log)
+
         self.txt_log = QTextEdit()
         self.txt_log.setReadOnly(True)
         self.txt_log.setMaximumHeight(150)
-        self.txt_log.setFont(QFont("Courier New", 9))
-        layout.addWidget(self.txt_log)
+        self.txt_log.setFont(QFont("Consolas, Courier New", 9))
+        log_layout.addWidget(self.txt_log)
+
+        layout.addWidget(log_card)
 
     def _setup_connections(self):
         """Connect signals to slots."""
@@ -89,12 +119,6 @@ class ReloadPage(QWidget):
         self.btn_deselect_all.clicked.connect(self._deselect_all)
         self.btn_reload.clicked.connect(self._on_reload)
         self.chk_assign_style.stateChanged.connect(self._on_assign_style_changed)
-
-    def _make_separator(self):
-        sep = QFrame()
-        sep.setFrameShape(QFrame.HLine)
-        sep.setFrameShadow(QFrame.Sunken)
-        return sep
 
     def set_api(self, api):
         """Update the API instance."""
@@ -124,9 +148,9 @@ class ReloadPage(QWidget):
     def _on_assign_style_changed(self, state):
         """Update reload button text based on checkbox state."""
         if state == Qt.Checked:
-            self.btn_reload.setText("Reload and Apply")
+            self.btn_reload.setText("↻  Reload and apply")
         else:
-            self.btn_reload.setText("Reload Style Only")
+            self.btn_reload.setText("↻  Reload style only")
 
     def _get_checked_layers(self):
         """Return list of checked QGIS layers."""
@@ -175,13 +199,13 @@ class ReloadPage(QWidget):
         self._log_info(f"─── {summary['message']} ───")
 
     def _log_success(self, message):
-        self.txt_log.append(f'<span style="color: green;">✅ {message}</span>')
+        self.txt_log.append(f'<span style="color: #10b981;">✓ {message}</span>')
 
     def _log_error(self, message):
-        self.txt_log.append(f'<span style="color: red;">❌ {message}</span>')
+        self.txt_log.append(f'<span style="color: #ef4444;">✗ {message}</span>')
 
     def _log_warning(self, message):
-        self.txt_log.append(f'<span style="color: orange;">⚠️ {message}</span>')
+        self.txt_log.append(f'<span style="color: #f59e0b;">⚠ {message}</span>')
 
     def _log_info(self, message):
-        self.txt_log.append(f'<span style="color: gray;">{message}</span>')
+        self.txt_log.append(f'<span style="color: #64748b;">{message}</span>')

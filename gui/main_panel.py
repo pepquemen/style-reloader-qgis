@@ -1,10 +1,10 @@
 from qgis.PyQt.QtWidgets import (
     QDockWidget, QWidget, QHBoxLayout,
-    QVBoxLayout, QListWidget, QStackedWidget,
-    QComboBox, QLabel, QFrame, QSizePolicy
+    QVBoxLayout, QListWidget, QListWidgetItem,
+    QStackedWidget, QComboBox, QLabel,
+    QFrame, QSizePolicy
 )
 from qgis.PyQt.QtCore import Qt
-from qgis.PyQt.QtGui import QFont
 
 from core.connection_manager import ConnectionManager
 from core.geoserver_api import GeoServerAPI
@@ -12,13 +12,13 @@ from gui.reload_page import ReloadPage
 from gui.connections_page import ConnectionsPage
 from gui.styles_page import StylesPage
 from gui.about_page import AboutPage
+from gui.styles import STYLESHEET, SIDEBAR_STYLESHEET
 
 
 class MainPanel(QDockWidget):
     """
     Main plugin panel.
-    Contains the global header (connection + workspace),
-    the sidebar navigation and the stacked pages.
+    Contains the sidebar navigation and the stacked pages.
     """
 
     def __init__(self, iface):
@@ -26,6 +26,9 @@ class MainPanel(QDockWidget):
         self.iface = iface
         self.api = None
         self.manager = ConnectionManager()
+
+        # Apply global theme to the dock widget
+        self.setStyleSheet(STYLESHEET)
 
         self._setup_ui()
         self._setup_connections()
@@ -41,90 +44,89 @@ class MainPanel(QDockWidget):
 
         # ── SIDEBAR ──────────────────────────────────────
         self.sidebar = QListWidget()
-        self.sidebar.setFixedWidth(120)
-        self.sidebar.addItems(["Connexions", "Estils", "Publicació", "About"])
-        self.sidebar.setCurrentRow(2)
+        self.sidebar.setObjectName("sidebar")
+        self.sidebar.setFixedWidth(140)
+        self.sidebar.setStyleSheet(SIDEBAR_STYLESHEET)
 
-        self.sidebar.setStyleSheet("""
-            QListWidget {
-                background-color: #00A8D6;
-                border: none;
-                color: white;
-                font-size: 13px;
-            }
-            QListWidget::item {
-                padding: 16px 8px;
-                text-align: center;
-            }
-            QListWidget::item:selected {
-                background-color: #0088B0;
-                font-weight: bold;
-                text-decoration: underline;
-            }
-            QListWidget::item:hover {
-                background-color: #0099C0;
-            }
-        """)
+        # Sidebar items with icon + label (Unicode symbols)
+        nav_items = [
+            ("🔌  Connections", 0),
+            ("🎨  Styles", 1),
+            ("📤  Publication", 2),
+            ("ℹ  About", 3),
+        ]
+        for label, index in nav_items:
+            item = QListWidgetItem(label)
+            self.sidebar.addItem(item)
+        self.sidebar.setCurrentRow(2)
 
         self.main_layout.addWidget(self.sidebar)
 
-        # ── SEPARADOR VERTICAL ───────────────────────────
-        sep = QFrame()
-        sep.setFrameShape(QFrame.VLine)
-        sep.setFrameShadow(QFrame.Sunken)
-        self.main_layout.addWidget(sep)
-
-        # ── CONTINGUT ────────────────────────────────────
+        # ── CONTENT AREA ─────────────────────────────────
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(8, 8, 8, 8)
-        content_layout.setSpacing(6)
+        content_layout.setContentsMargins(12, 12, 12, 12)
+        content_layout.setSpacing(10)
 
-        # Header — Connection + Workspace
+        # Header — Connection + Workspace + Status
         self.header_widget = QWidget()
+        self.header_widget.setObjectName("headerWidget")
         header_layout = QVBoxLayout(self.header_widget)
         header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(4)
+        header_layout.setSpacing(8)
 
         # Connection row
         conn_row = QHBoxLayout()
-        conn_row.addWidget(QLabel("Connection:"))
+        conn_row.setSpacing(8)
+
+        lbl_conn = QLabel("Connection")
+        lbl_conn.setProperty("role", "section")
+        conn_row.addWidget(lbl_conn)
+
         self.cmb_connections = QComboBox()
         self.cmb_connections.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Fixed
         )
-        conn_row.addWidget(self.cmb_connections)
+        conn_row.addWidget(self.cmb_connections, stretch=1)
 
-        # Separador vertical entre connection i status
-        sep_v = QFrame()
-        sep_v.setFrameShape(QFrame.VLine)
-        sep_v.setFrameShadow(QFrame.Sunken)
-        conn_row.addWidget(sep_v)
+        self.status_pill = QFrame()
+        self.status_pill.setObjectName("statusPill")
+        self.status_pill.setProperty("connected", "false")
+        status_layout = QHBoxLayout(self.status_pill)
+        status_layout.setContentsMargins(10, 2, 10, 2)
+        status_layout.setSpacing(6)
+        self.lbl_status = QLabel("● Disconnected")
+        self.lbl_status.setStyleSheet("background: transparent; border: none;")
+        status_layout.addWidget(self.lbl_status)
+        conn_row.addWidget(self.status_pill)
 
-        self.lbl_status = QLabel("●")
-        self.lbl_status.setStyleSheet("color: red;")
-        conn_row.addWidget(self.lbl_status)
         header_layout.addLayout(conn_row)
 
         # Workspace row
         ws_row = QHBoxLayout()
-        ws_row.addWidget(QLabel("Workspace:"))
+        ws_row.setSpacing(8)
+        lbl_ws = QLabel("Workspace")
+        lbl_ws.setProperty("role", "section")
+        ws_row.addWidget(lbl_ws)
+
         self.cmb_workspace = QComboBox()
         self.cmb_workspace.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Fixed
         )
-        ws_row.addWidget(self.cmb_workspace)
+        ws_row.addWidget(self.cmb_workspace, stretch=1)
+        ws_row.addStretch()
         header_layout.addLayout(ws_row)
 
         content_layout.addWidget(self.header_widget)
 
-        # Separador horitzontal
+        # Horizontal separator
         sep_h = QFrame()
+        sep_h.setProperty("role", "separator")
         sep_h.setFrameShape(QFrame.HLine)
-        sep_h.setFrameShadow(QFrame.Sunken)
+        sep_h.setFrameShadow(QFrame.Plain)
         content_layout.addWidget(sep_h)
 
-        # ── PÀGINES ───────────────────────────────────────
+        # ── PAGES (stacked) ───────────────────────────────
         self.stack = QStackedWidget()
         content_layout.addWidget(self.stack)
 
@@ -206,10 +208,14 @@ class MainPanel(QDockWidget):
             self.styles_page.set_api(self.api)
 
     def _set_status(self, connected):
-        """Update the status indicator."""
+        """Update the connection status pill."""
         if connected:
-            self.lbl_status.setText("●")
-            self.lbl_status.setStyleSheet("color: green;")
+            self.lbl_status.setText("● Connected")
+            self.status_pill.setProperty("connected", "true")
         else:
-            self.lbl_status.setText("●")
-            self.lbl_status.setStyleSheet("color: red;")
+            self.lbl_status.setText("● Disconnected")
+            self.status_pill.setProperty("connected", "false")
+        # Re-apply stylesheet so the property change takes effect
+        self.status_pill.style().unpolish(self.status_pill)
+        self.status_pill.style().polish(self.status_pill)
+        self.status_pill.update()

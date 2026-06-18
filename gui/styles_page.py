@@ -15,8 +15,7 @@ class StylesPage(QWidget):
     Handles GeoServer styles visualization and management.
     Left panel: GeoServer workspace styles.
     Right panel: QGIS project layers.
-    Bottom: SLD preview.
-    Buttons: Download, Apply style to layer, Delete.
+    Bottom: SLD preview + legend.
     """
 
     def __init__(self, api=None):
@@ -28,101 +27,127 @@ class StylesPage(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(6)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
 
-        # Title
+        # ── Title ────────────────────────────────────────
         title = QLabel("Styles")
-        title.setStyleSheet("font-weight: bold; font-size: 13px;")
+        title.setProperty("role", "title")
         layout.addWidget(title)
 
-        # ── TOP ROW: styles list | layers list ───────────────
-        top_row = QHBoxLayout()
+        subtitle = QLabel(
+            "Browse styles from the active workspace and apply them to your layers."
+        )
+        subtitle.setProperty("role", "subtitle")
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
 
-        # Left — GeoServer styles
+        # ── Top card: GeoServer styles | QGIS layers ─────
+        top_card = QFrame()
+        top_card.setObjectName("card")
+        top_card.setFrameShape(QFrame.StyledPanel)
+        top_layout = QHBoxLayout(top_card)
+        top_layout.setContentsMargins(12, 12, 12, 12)
+        top_layout.setSpacing(12)
+
+        # Left column — GeoServer styles
         left_layout = QVBoxLayout()
-        left_layout.addWidget(QLabel("GeoServer styles:"))
+        left_layout.setSpacing(6)
+        lbl_styles = QLabel("GeoServer styles")
+        lbl_styles.setProperty("role", "section")
+        left_layout.addWidget(lbl_styles)
+
         self.lst_styles = QListWidget()
         self.lst_styles.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding
         )
         left_layout.addWidget(self.lst_styles)
-        top_row.addLayout(left_layout)
+        top_layout.addLayout(left_layout, stretch=1)
 
         # Vertical separator
         sep_v = QFrame()
         sep_v.setFrameShape(QFrame.VLine)
-        sep_v.setFrameShadow(QFrame.Sunken)
-        top_row.addWidget(sep_v)
+        sep_v.setFrameShadow(QFrame.Plain)
+        sep_v.setProperty("role", "separator")
+        top_layout.addWidget(sep_v)
 
-        # Right — QGIS project layers
+        # Right column — QGIS project layers
         right_layout = QVBoxLayout()
-        right_layout.addWidget(QLabel("Project layers:"))
+        right_layout.setSpacing(6)
+        lbl_layers = QLabel("Project layers")
+        lbl_layers.setProperty("role", "section")
+        right_layout.addWidget(lbl_layers)
+
         self.lst_layers = QListWidget()
         self.lst_layers.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding
         )
         right_layout.addWidget(self.lst_layers)
-        top_row.addLayout(right_layout)
+        top_layout.addLayout(right_layout, stretch=1)
 
-        top_row.setStretch(0, 1)
-        top_row.setStretch(2, 1)
+        layout.addWidget(top_card)
 
-        layout.addLayout(top_row)
-
-        # ── PREVIEW ROW: SLD + Legend ─────────────────────────
-        sep_h = QFrame()
-        sep_h.setFrameShape(QFrame.HLine)
-        sep_h.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(sep_h)
-
-        preview_row = QHBoxLayout()
+        # ── Bottom card: SLD preview + Legend ────────────
+        preview_card = QFrame()
+        preview_card.setObjectName("card")
+        preview_card.setFrameShape(QFrame.StyledPanel)
+        preview_layout = QHBoxLayout(preview_card)
+        preview_layout.setContentsMargins(12, 12, 12, 12)
+        preview_layout.setSpacing(12)
 
         # SLD XML preview
         sld_layout = QVBoxLayout()
-        sld_layout.addWidget(QLabel("SLD Preview:"))
+        sld_layout.setSpacing(6)
+        lbl_sld = QLabel("SLD Preview")
+        lbl_sld.setProperty("role", "section")
+        sld_layout.addWidget(lbl_sld)
+
         self.txt_sld_preview = QTextEdit()
         self.txt_sld_preview.setReadOnly(True)
-        self.txt_sld_preview.setFont(QFont("Courier New", 9))
+        self.txt_sld_preview.setFont(QFont("Consolas, Courier New", 9))
         self.txt_sld_preview.setPlaceholderText(
             "Select a style to preview its SLD..."
         )
-        self.txt_sld_preview.setFixedHeight(160)
+        self.txt_sld_preview.setFixedHeight(180)
         sld_layout.addWidget(self.txt_sld_preview)
-        preview_row.addLayout(sld_layout, stretch=3)
+        preview_layout.addLayout(sld_layout, stretch=3)
 
         # Vertical separator
         sep_pv = QFrame()
         sep_pv.setFrameShape(QFrame.VLine)
-        sep_pv.setFrameShadow(QFrame.Sunken)
-        preview_row.addWidget(sep_pv)
+        sep_pv.setFrameShadow(QFrame.Plain)
+        sep_pv.setProperty("role", "separator")
+        preview_layout.addWidget(sep_pv)
 
         # Legend graphic
         legend_layout = QVBoxLayout()
-        legend_layout.addWidget(QLabel("Legend:"))
+        legend_layout.setSpacing(6)
+        lbl_legend = QLabel("Legend")
+        lbl_legend.setProperty("role", "section")
+        legend_layout.addWidget(lbl_legend)
+
         self.scroll_legend = QScrollArea()
         self.scroll_legend.setWidgetResizable(True)
-        self.scroll_legend.setFixedHeight(160)
+        self.scroll_legend.setFixedHeight(180)
         self.scroll_legend.setAlignment(Qt.AlignCenter)
         self.lbl_legend = QLabel("Select a style\nto load legend")
         self.lbl_legend.setAlignment(Qt.AlignCenter)
-        self.lbl_legend.setStyleSheet("color: gray; font-size: 11px;")
+        self.lbl_legend.setProperty("role", "subtitle")
         self.scroll_legend.setWidget(self.lbl_legend)
         legend_layout.addWidget(self.scroll_legend)
-        preview_row.addLayout(legend_layout, stretch=1)
+        preview_layout.addLayout(legend_layout, stretch=1)
 
-        layout.addLayout(preview_row)
+        layout.addWidget(preview_card)
 
-        # ── BUTTONS ──────────────────────────────────────────
-        sep_h2 = QFrame()
-        sep_h2.setFrameShape(QFrame.HLine)
-        sep_h2.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(sep_h2)
-
+        # ── Action buttons row ───────────────────────────
         btn_row = QHBoxLayout()
-        self.btn_download = QPushButton("⬇ Download SLD")
-        self.btn_apply = QPushButton("▶ Apply style to layer")
-        self.btn_delete = QPushButton("🗑 Delete Style")
+        btn_row.setSpacing(8)
+
+        self.btn_download = QPushButton("⬇  Download SLD")
+        self.btn_apply = QPushButton("▶  Apply style to layer")
+        self.btn_apply.setProperty("primary", "true")
+        self.btn_delete = QPushButton("🗑  Delete style")
+        self.btn_delete.setProperty("danger", "true")
 
         self.btn_download.setEnabled(False)
         self.btn_apply.setEnabled(False)
@@ -132,6 +157,7 @@ class StylesPage(QWidget):
         btn_row.addWidget(self.btn_apply)
         btn_row.addWidget(self.btn_delete)
         btn_row.addStretch()
+
         layout.addLayout(btn_row)
 
     def _setup_connections(self):
@@ -234,7 +260,11 @@ class StylesPage(QWidget):
         """Reset the legend panel to its placeholder state."""
         self.lbl_legend.setPixmap(QPixmap())
         self.lbl_legend.setText(text)
-        self.lbl_legend.setStyleSheet("color: gray; font-size: 11px;")
+        self.lbl_legend.setProperty("role", "subtitle")
+        # Re-polish so property-driven styling applies
+        self.lbl_legend.style().unpolish(self.lbl_legend)
+        self.lbl_legend.style().polish(self.lbl_legend)
+        self.lbl_legend.update()
 
     def _update_apply_button(self, *args):
         """Enable Apply button only when both a style and a layer are selected."""
