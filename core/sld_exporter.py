@@ -59,3 +59,25 @@ class SLDExporter:
 
         os.unlink(tmp.name)
         return sld
+
+    @staticmethod
+    def apply_sld_to_layer(layer, sld_content):
+        """
+        Apply an SLD string to a QGIS layer.
+        Returns (success: bool, error_msg: str).
+        """
+        tmp = tempfile.NamedTemporaryFile(
+            suffix='.sld', delete=False, mode='w', encoding='utf-8'
+        )
+        tmp.write(sld_content)
+        tmp.close()
+
+        try:
+            success, error_msg = layer.loadSldStyle(tmp.name)
+        finally:
+            os.unlink(tmp.name)
+
+        if success:
+            layer.triggerRepaint()
+
+        return success, error_msg
