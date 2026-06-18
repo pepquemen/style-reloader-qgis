@@ -6,6 +6,7 @@ version=0.1
 author=Josep Quevedo i Pau Morell
 email=tu@email.com
 about=Style Reloader allows you to export layer styles as SLD and push them directly to your GeoServer instance with one click.
+icon=assets/icons/reload.png
 tracker=https://github.com/pepquemen/style-reloader-qgis/issues
 repository=https://github.com/pepquemen/style-reloader-qgis
 license=GPLv3

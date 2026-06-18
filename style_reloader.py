@@ -30,7 +30,7 @@ class StyleReloader:
         # ── TOOLBAR ACTION ────────────────────────────────
         icon_path = os.path.join(
             plugin_dir,
-            'resources', 'icons', 'reload.png'
+            'assets', 'icons', 'reload.png'
         )
         self.action = QAction(
             QIcon(icon_path),
@@ -111,6 +111,14 @@ class StyleReloader:
                 "Style Reloader",
                 f"{result['layer']}: {result['message']}"
             )
+
+    def icon(self):
+        """Return the plugin icon for QGIS menus and Plugin Manager."""
+        icon_path = os.path.join(
+            plugin_dir,
+            'assets', 'icons', 'reload.png'
+        )
+        return QIcon(icon_path)
 
     def unload(self):
         """Remove the plugin UI elements."""

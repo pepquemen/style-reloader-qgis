@@ -3,7 +3,7 @@ from qgis.PyQt.QtWidgets import (
     QFrame, QSizePolicy
 )
 from qgis.PyQt.QtCore import Qt
-from qgis.PyQt.QtGui import QFont
+from qgis.PyQt.QtGui import QFont, QPixmap
 import os
 
 
@@ -22,10 +22,22 @@ class AboutPage(QWidget):
         layout.setSpacing(8)
         layout.setAlignment(Qt.AlignTop)
 
-        # Logo placeholder
-        self.lbl_logo = QLabel("🔄")
+        # Plugin logo
+        logo_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            'assets', 'icons', 'reload.png'
+        )
+        self.lbl_logo = QLabel()
         self.lbl_logo.setAlignment(Qt.AlignCenter)
-        self.lbl_logo.setStyleSheet("font-size: 48px;")
+        pixmap = QPixmap(logo_path)
+        if not pixmap.isNull():
+            self.lbl_logo.setPixmap(
+                pixmap.scaled(
+                    96, 96,
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation
+                )
+            )
         layout.addWidget(self.lbl_logo)
 
         # Plugin name
