@@ -208,7 +208,7 @@ class StylesPage(QWidget):
 
         # Restore selection if still present
         if current_name:
-            items = self.lst_layers.findItems(current_name, 0)
+            items = self.lst_layers.findItems(current_name, Qt.MatchExactly)
             if items:
                 self.lst_layers.setCurrentItem(items[0])
 

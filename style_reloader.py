@@ -43,11 +43,6 @@ class StyleReloader:
 
         # ── MAIN PANEL ────────────────────────────────────
         self.main_panel = MainPanel(self.iface)
-        self.iface.addDockWidget(
-            Qt.LeftDockWidgetArea,
-            self.main_panel
-        )
-        self.main_panel.hide()
 
         # ── RIGHT CLICK CONTEXT MENU ──────────────────────
         self.iface.layerTreeView().contextMenuAboutToShow.connect(
@@ -126,6 +121,6 @@ class StyleReloader:
         self.iface.layerTreeView().contextMenuAboutToShow.disconnect(
             self._add_context_menu
         )
-        self.iface.removeDockWidget(self.main_panel)
+        self.main_panel.close()
         self.main_panel.deleteLater()
         self.main_panel = None

@@ -1,5 +1,5 @@
 from qgis.PyQt.QtWidgets import (
-    QDockWidget, QWidget, QHBoxLayout,
+    QDialog, QWidget, QHBoxLayout,
     QVBoxLayout, QListWidget, QListWidgetItem,
     QStackedWidget, QComboBox, QLabel,
     QFrame, QSizePolicy
@@ -15,24 +15,29 @@ from gui.about_page import AboutPage
 from gui.styles import STYLESHEET, SIDEBAR_STYLESHEET
 
 
-class MainPanel(QDockWidget):
+class MainPanel(QDialog):
     """
-    Main plugin panel.
+    Main plugin panel as a floating dialog.
     Contains the sidebar navigation and the stacked pages.
     """
 
     def __init__(self, iface):
-        super().__init__("Style Reloader for GeoServer")
+        super().__init__(
+            iface.mainWindow(),
+            Qt.Window | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint
+        )
+        self.setWindowTitle("Style Reloader for GeoServer")
+        self.setMinimumSize(700, 500)
         self.iface = iface
         self.api = None
         self.manager = ConnectionManager()
 
-        # Apply global theme to the dock widget
         self.setStyleSheet(STYLESHEET)
 
         self._setup_ui()
         self._setup_connections()
         self._load_connections()
+        self._on_page_changed(2)
 
     def _setup_ui(self):
         """Build the main panel UI programmatically."""
@@ -141,7 +146,10 @@ class MainPanel(QDockWidget):
         self.stack.addWidget(self.about_page)         # index 3
 
         self.main_layout.addWidget(content_widget)
-        self.setWidget(self.main_widget)
+
+        dlg_layout = QHBoxLayout(self)
+        dlg_layout.setContentsMargins(0, 0, 0, 0)
+        dlg_layout.addWidget(self.main_widget)
 
     def _setup_connections(self):
         """Connect all signals to slots."""
