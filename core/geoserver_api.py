@@ -1,5 +1,14 @@
+import threading
+from urllib.parse import quote
+from xml.sax.saxutils import escape as xml_escape
+
 import requests
 from requests.auth import HTTPBasicAuth
+
+
+def _seg(value):
+    """URL-encode a single path segment (no slashes allowed through)."""
+    return quote(str(value), safe='')
 
 
 class GeoServerAPI:
@@ -7,40 +16,80 @@ class GeoServerAPI:
     Handles all communication with the GeoServer REST API.
     """
 
-    def __init__(self, url, user, password, workspace=None):
+    #: Default timeout (seconds) applied to every request so the QGIS UI
+    #: thread can never hang indefinitely on an unresponsive server.
+    DEFAULT_TIMEOUT = 15
+
+    def __init__(self, url, user, password, workspace=None, verify_tls=True):
         self.url = url.rstrip('/')
         self.workspace = workspace
+        self.verify_tls = verify_tls
         self.auth = HTTPBasicAuth(user, password)
+        # requests.Session is not safe to share across threads, so keep one
+        # session per thread. Legend/style fetches run in worker threads.
+        self._local = threading.local()
         self._style_layer_cache = {}  # {workspace: {style_name: layer_name}}
+
+    def _session(self):
+        """Return a per-thread requests.Session (connection reuse, safe)."""
+        session = getattr(self._local, "session", None)
+        if session is None:
+            session = requests.Session()
+            self._local.session = session
+        return session
 
     def set_workspace(self, workspace):
         """Set or change the active workspace at runtime."""
         self.workspace = workspace
 
+    # ── Internal request helper ──────────────────────────────────────
+
+    def _request(self, method, url, **kwargs):
+        """
+        Wrapper around the session that always enforces auth, TLS
+        verification and a timeout.
+        """
+        kwargs.setdefault("timeout", self.DEFAULT_TIMEOUT)
+        return self._session().request(
+            method,
+            url,
+            auth=self.auth,
+            verify=self.verify_tls,
+            **kwargs,
+        )
+
+    # ── REST calls ───────────────────────────────────────────────────
+
     def test_connection(self):
         """Check if the connection to GeoServer is successful."""
         try:
-            r = requests.get(
-                f"{self.url}/rest/workspaces.json",  # ← sense workspace
-                auth=self.auth,
-                timeout=5
+            r = self._request(
+                "GET",
+                f"{self.url}/rest/workspaces.json",
+                timeout=5,
             )
             return r.status_code == 200
-        except requests.exceptions.ConnectionError:
+        except requests.exceptions.RequestException:
             return False
         except Exception:
             return False
 
     def layer_exists(self, layer_name):
         """Check if a layer exists in the workspace."""
-        url = f"{self.url}/rest/workspaces/{self.workspace}/layers/{layer_name}.json"
-        r = requests.get(url, auth=self.auth)
+        url = (
+            f"{self.url}/rest/workspaces/{_seg(self.workspace)}"
+            f"/layers/{_seg(layer_name)}.json"
+        )
+        r = self._request("GET", url)
         return r.status_code == 200
 
     def style_exists(self, style_name):
         """Check if a style exists in the workspace."""
-        url = f"{self.url}/rest/workspaces/{self.workspace}/styles/{style_name}.json"
-        r = requests.get(url, auth=self.auth)
+        url = (
+            f"{self.url}/rest/workspaces/{_seg(self.workspace)}"
+            f"/styles/{_seg(style_name)}.json"
+        )
+        r = self._request("GET", url)
         return r.status_code == 200
 
     def upload_style(self, style_name, sld_content, content_type):
@@ -48,17 +97,20 @@ class GeoServerAPI:
         headers = {"Content-Type": content_type}
 
         if self.style_exists(style_name):
-            url = f"{self.url}/rest/workspaces/{self.workspace}/styles/{style_name}"
-            r = requests.put(
-                url, auth=self.auth, headers=headers,
+            url = (
+                f"{self.url}/rest/workspaces/{_seg(self.workspace)}"
+                f"/styles/{_seg(style_name)}"
+            )
+            r = self._request(
+                "PUT", url, headers=headers,
                 params={"raw": "true"},
                 data=sld_content.encode('utf-8')
             )
             action = "updated (PUT)"
         else:
-            url = f"{self.url}/rest/workspaces/{self.workspace}/styles"
-            r = requests.post(
-                url, auth=self.auth, headers=headers,
+            url = f"{self.url}/rest/workspaces/{_seg(self.workspace)}/styles"
+            r = self._request(
+                "POST", url, headers=headers,
                 params={"name": style_name, "raw": "true"},
                 data=sld_content.encode('utf-8')
             )
@@ -68,15 +120,23 @@ class GeoServerAPI:
 
     def assign_style(self, layer_name, style_name):
         """Assign a style to a GeoServer layer."""
-        url = f"{self.url}/rest/workspaces/{self.workspace}/layers/{layer_name}"
-        xml = f"""<layer>
-  <defaultStyle>
-    <name>{self.workspace}:{style_name}</name>
-    <workspace>{self.workspace}</workspace>
-  </defaultStyle>
-</layer>"""
-        r = requests.put(
-            url, auth=self.auth,
+        url = (
+            f"{self.url}/rest/workspaces/{_seg(self.workspace)}"
+            f"/layers/{_seg(layer_name)}"
+        )
+        # Escape all interpolated values to avoid breaking / injecting XML.
+        ws = xml_escape(self.workspace or "")
+        style = xml_escape(style_name)
+        xml = (
+            "<layer>\n"
+            "  <defaultStyle>\n"
+            f"    <name>{ws}:{style}</name>\n"
+            f"    <workspace>{ws}</workspace>\n"
+            "  </defaultStyle>\n"
+            "</layer>"
+        )
+        r = self._request(
+            "PUT", url,
             headers={"Content-Type": "application/xml"},
             data=xml.encode('utf-8')
         )
@@ -85,7 +145,7 @@ class GeoServerAPI:
     def get_workspaces(self):
         """Return the list of available workspaces."""
         url = f"{self.url}/rest/workspaces.json"
-        r = requests.get(url, auth=self.auth)
+        r = self._request("GET", url)
         if r.status_code == 200:
             data = r.json()
             return [w['name'] for w in data['workspaces']['workspace']]
@@ -93,16 +153,19 @@ class GeoServerAPI:
 
     def get_style_content(self, style_name):
         """Get the current SLD content of a style from GeoServer."""
-        url = f"{self.url}/rest/workspaces/{self.workspace}/styles/{style_name}.sld"
-        r = requests.get(url, auth=self.auth)
+        url = (
+            f"{self.url}/rest/workspaces/{_seg(self.workspace)}"
+            f"/styles/{_seg(style_name)}.sld"
+        )
+        r = self._request("GET", url)
         if r.status_code == 200:
             return r.text
         return None
 
     def get_workspace_styles(self):
         """Get all styles available in the current workspace."""
-        url = f"{self.url}/rest/workspaces/{self.workspace}/styles.json"
-        r = requests.get(url, auth=self.auth)
+        url = f"{self.url}/rest/workspaces/{_seg(self.workspace)}/styles.json"
+        r = self._request("GET", url)
         if r.status_code == 200:
             data = r.json()
             styles = data.get('styles', {}).get('style', [])
@@ -111,8 +174,11 @@ class GeoServerAPI:
 
     def delete_style(self, style_name):
         """Delete a style from GeoServer."""
-        url = f"{self.url}/rest/workspaces/{self.workspace}/styles/{style_name}"
-        r = requests.delete(url, auth=self.auth, params={"purge": "true"})
+        url = (
+            f"{self.url}/rest/workspaces/{_seg(self.workspace)}"
+            f"/styles/{_seg(style_name)}"
+        )
+        r = self._request("DELETE", url, params={"purge": "true"})
         return r.status_code == 200
 
     def find_layer_for_style(self, style_name):
@@ -126,9 +192,10 @@ class GeoServerAPI:
             return cache[style_name]
 
         try:
-            r = requests.get(
-                f"{self.url}/rest/workspaces/{self.workspace}/layers.json",
-                auth=self.auth, timeout=10
+            r = self._request(
+                "GET",
+                f"{self.url}/rest/workspaces/{_seg(self.workspace)}/layers.json",
+                timeout=10,
             )
             if r.status_code != 200:
                 return None
@@ -139,9 +206,11 @@ class GeoServerAPI:
             ]
 
             for name in layer_names:
-                rd = requests.get(
-                    f"{self.url}/rest/workspaces/{self.workspace}/layers/{name}.json",
-                    auth=self.auth, timeout=10
+                rd = self._request(
+                    "GET",
+                    f"{self.url}/rest/workspaces/{_seg(self.workspace)}"
+                    f"/layers/{_seg(name)}.json",
+                    timeout=10,
                 )
                 if rd.status_code != 200:
                     continue
@@ -175,9 +244,9 @@ class GeoServerAPI:
         Returns raw PNG bytes, or None on failure.
         """
         def _request(layer_qualified):
-            r = requests.post(
+            r = self._request(
+                "POST",
                 f"{self.url}/wms",
-                auth=self.auth,
                 timeout=10,
                 data={
                     "SERVICE": "WMS",

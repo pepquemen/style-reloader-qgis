@@ -1,7 +1,9 @@
+from urllib.parse import urlparse
+
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton,
-    QFrame
+    QFrame, QMessageBox
 )
 from qgis.PyQt.QtCore import Qt
 
@@ -181,6 +183,31 @@ class ConnectionDialog(QDialog):
         except Exception as e:
             self._set_test_status(f"● Error: {str(e)[:30]}", "#ef4444")
 
+    def _validate_url(self, url):
+        """
+        Validate the URL scheme. Returns (ok, scheme).
+        Only http/https are accepted.
+        """
+        parsed = urlparse(url)
+        return parsed.scheme in ("http", "https"), parsed.scheme
+
+    def _confirm_insecure(self):
+        """
+        Warn the user that an http:// connection sends the GeoServer
+        credentials in clear text. Returns True if the user accepts.
+        """
+        reply = QMessageBox.warning(
+            self,
+            "Insecure connection",
+            "This URL uses plain HTTP. Your GeoServer username and password "
+            "will be sent over the network unencrypted (HTTP Basic Auth) and "
+            "can be intercepted.\n\nUse HTTPS whenever possible.\n\n"
+            "Do you want to save this insecure connection anyway?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        return reply == QMessageBox.Yes
+
     def _on_save(self):
         """Save the connection and close the dialog."""
         name = self.txt_name.text().strip()
@@ -193,10 +220,32 @@ class ConnectionDialog(QDialog):
             self._set_test_status("● Fill all fields first", "#f59e0b")
             return
 
+        ok, scheme = self._validate_url(url)
+        if not ok:
+            self._set_test_status("● URL must start with http(s)://", "#f59e0b")
+            return
+
+        # Warn before persisting credentials over an insecure channel.
+        if scheme == "http" and not self._confirm_insecure():
+            return
+
         # Check duplicate name (only on Add mode)
         if not self.is_edit and self.manager.connection_exists(name):
             self._set_test_status("● Name already exists", "#f59e0b")
             return
 
-        self.manager.save_connection(name, url, user, password)
+        if not self.manager.save_connection(name, url, user, password):
+            self._set_test_status(
+                "● Could not store credentials securely", "#ef4444"
+            )
+            QMessageBox.critical(
+                self,
+                "Credential store unavailable",
+                "The connection could not be saved because the QGIS "
+                "authentication database is locked or unavailable. Set the "
+                "QGIS master password (Settings ▸ Options ▸ Authentication) "
+                "and try again.",
+            )
+            return
+
         self.accept()

@@ -4,11 +4,35 @@ from qgis.PyQt.QtWidgets import (
     QCheckBox, QLabel, QTextEdit, QFrame,
     QSizePolicy
 )
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import Qt, QSize, QThread, pyqtSignal
 from qgis.PyQt.QtGui import QFont
 from qgis.core import QgsProject, QgsMapLayer
 
 from core.style_sync import StyleSync
+from .icons import themed_icon
+
+
+class _SyncWorker(QThread):
+    """Run the network part of a publish off the GUI thread."""
+    done = pyqtSignal(list, dict)
+
+    def __init__(self, api, prepared, assign_style):
+        super().__init__()
+        self._api = api
+        self._prepared = prepared
+        self._assign_style = assign_style
+
+    def run(self):
+        try:
+            results, summary = StyleSync(self._api).sync_prepared(
+                self._prepared, assign_style=self._assign_style
+            )
+        except Exception as e:
+            results, summary = [], {
+                'total': 0, 'success': 0, 'skipped': 0, 'errors': 1,
+                'message': f'Unexpected error: {e}',
+            }
+        self.done.emit(results, summary)
 
 
 class ReloadPage(QWidget):
@@ -19,6 +43,7 @@ class ReloadPage(QWidget):
     def __init__(self, api=None):
         super().__init__()
         self.api = api
+        self._sync_worker = None
         self._setup_ui()
         self._setup_connections()
         self.load_layers()
@@ -86,9 +111,12 @@ class ReloadPage(QWidget):
         self.chk_assign_style.setChecked(True)
         options_layout.addWidget(self.chk_assign_style)
 
-        self.btn_reload = QPushButton("↻  Reload and apply")
+        self.btn_reload = QPushButton("  Reload and apply")
         self.btn_reload.setProperty("primary", "true")
         self.btn_reload.setMinimumHeight(38)
+        # Primary buttons render white text, so tint the icon white too.
+        self.btn_reload.setIcon(themed_icon("ic_reload.svg", "#ffffff"))
+        self.btn_reload.setIconSize(QSize(16, 16))
         options_layout.addWidget(self.btn_reload)
 
         layout.addWidget(options_card)
@@ -148,9 +176,9 @@ class ReloadPage(QWidget):
     def _on_assign_style_changed(self, state):
         """Update reload button text based on checkbox state."""
         if state == Qt.Checked:
-            self.btn_reload.setText("↻  Reload and apply")
+            self.btn_reload.setText("  Reload and apply")
         else:
-            self.btn_reload.setText("↻  Reload style only")
+            self.btn_reload.setText("  Reload style only")
 
     def _get_checked_layers(self):
         """Return list of checked QGIS layers."""
@@ -165,7 +193,11 @@ class ReloadPage(QWidget):
         return [l for l in all_layers if l.name() in checked_names]
 
     def _on_reload(self):
-        """Execute style reload for checked layers."""
+        """Export SLDs (GUI thread) then publish to GeoServer in background."""
+
+        # Avoid launching a second publish while one is running.
+        if self._sync_worker is not None and self._sync_worker.isRunning():
+            return
 
         # No connection
         if not self.api:
@@ -178,15 +210,27 @@ class ReloadPage(QWidget):
             self._log_error("No layers selected")
             return
 
-        # Clear log
         self.txt_log.clear()
 
-        # Execute sync
+        # Export SLDs on the GUI thread (touches QGIS layer objects — must not
+        # happen in a worker thread), then hand the network work to the worker.
         sync = StyleSync(self.api)
-        assign = self.chk_assign_style.isChecked()
-        results, summary = sync.sync_layers(layers, assign_style=assign)
+        prepared = sync.prepare_layers(layers)
 
-        # Show results in log
+        assign = self.chk_assign_style.isChecked()
+
+        self.btn_reload.setEnabled(False)
+        self._log_info("Publishing…")
+
+        self._sync_worker = _SyncWorker(self.api, prepared, assign)
+        self._sync_worker.done.connect(self._on_sync_done)
+        self._sync_worker.start()
+
+    def _on_sync_done(self, results, summary):
+        """Render sync results once the background publish finishes."""
+        self.btn_reload.setEnabled(True)
+        self.txt_log.clear()
+
         for r in results:
             if r['status'] == StyleSync.SUCCESS:
                 self._log_success(f"{r['layer']}: {r['message']}")
@@ -195,8 +239,8 @@ class ReloadPage(QWidget):
             else:
                 self._log_error(f"{r['layer']}: {r['message']}")
 
-        # Show summary
-        self._log_info(f"─── {summary['message']} ───")
+        if summary.get('message'):
+            self._log_info(f"─── {summary['message']} ───")
 
     def _log_success(self, message):
         self.txt_log.append(f'<span style="color: #10b981;">✓ {message}</span>')

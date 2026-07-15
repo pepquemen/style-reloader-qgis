@@ -4,7 +4,8 @@ from qgis.PyQt.QtWidgets import (
     QStackedWidget, QComboBox, QLabel,
     QFrame, QSizePolicy
 )
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QColor
+from qgis.PyQt.QtCore import Qt, QSize
 
 from core.connection_manager import ConnectionManager
 from core.geoserver_api import GeoServerAPI
@@ -12,6 +13,7 @@ from gui.reload_page import ReloadPage
 from gui.connections_page import ConnectionsPage
 from gui.styles_page import StylesPage
 from gui.about_page import AboutPage
+from gui.icons import themed_icon
 from gui.styles import STYLESHEET, SIDEBAR_STYLESHEET
 
 
@@ -50,18 +52,22 @@ class MainPanel(QDialog):
         # ── SIDEBAR ──────────────────────────────────────
         self.sidebar = QListWidget()
         self.sidebar.setObjectName("sidebar")
-        self.sidebar.setFixedWidth(140)
+        self.sidebar.setFixedWidth(150)
         self.sidebar.setStyleSheet(SIDEBAR_STYLESHEET)
+        self.sidebar.setIconSize(QSize(18, 18))
 
-        # Sidebar items with icon + label (Unicode symbols)
+        # Sidebar items with clean line icons (white on the blue sidebar)
+        nav_white = QColor("#ffffff")
         nav_items = [
-            ("🔌  Connections", 0),
-            ("🎨  Styles", 1),
-            ("📤  Publication", 2),
-            ("ℹ  About", 3),
+            ("Connections", "nav_connections.svg", 0),
+            ("Styles", "nav_styles.svg", 1),
+            ("Publication", "nav_publication.svg", 2),
+            ("About", "nav_about.svg", 3),
         ]
-        for label, index in nav_items:
-            item = QListWidgetItem(label)
+        for label, icon_file, index in nav_items:
+            item = QListWidgetItem(
+                themed_icon(icon_file, nav_white), f"  {label}"
+            )
             self.sidebar.addItem(item)
         self.sidebar.setCurrentRow(2)
 

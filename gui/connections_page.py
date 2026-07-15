@@ -3,10 +3,11 @@ from qgis.PyQt.QtWidgets import (
     QListWidget, QPushButton, QMessageBox,
     QLabel, QSizePolicy, QFrame
 )
-from qgis.PyQt.QtCore import pyqtSignal
+from qgis.PyQt.QtCore import pyqtSignal, QSize
 
 from core.connection_manager import ConnectionManager
 from .connection_dialog import ConnectionDialog
+from .icons import themed_icon
 
 
 class ConnectionsPage(QWidget):
@@ -59,10 +60,18 @@ class ConnectionsPage(QWidget):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
-        self.btn_add = QPushButton("＋  Add")
-        self.btn_edit = QPushButton("✎  Edit")
-        self.btn_delete = QPushButton("🗑  Delete")
+        self.btn_add = QPushButton("  Add")
+        self.btn_edit = QPushButton("  Edit")
+        self.btn_delete = QPushButton("  Delete")
         self.btn_delete.setProperty("danger", "true")
+
+        for btn, icon_file in (
+            (self.btn_add, "ic_add.svg"),
+            (self.btn_edit, "ic_edit.svg"),
+            (self.btn_delete, "ic_delete.svg"),
+        ):
+            btn.setIcon(themed_icon(icon_file))
+            btn.setIconSize(QSize(16, 16))
 
         self.btn_edit.setEnabled(False)
         self.btn_delete.setEnabled(False)

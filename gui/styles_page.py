@@ -5,9 +5,49 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox, QFrame, QScrollArea
 )
 from qgis.PyQt.QtGui import QFont, QPixmap
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import Qt, QSize, QThread, pyqtSignal
 from qgis.core import QgsProject
 from core.sld_exporter import SLDExporter
+from .icons import themed_icon
+
+
+class _StylesListWorker(QThread):
+    """Fetch the workspace style list off the GUI thread."""
+    ready = pyqtSignal(int, object)
+
+    def __init__(self, api, req_id):
+        super().__init__()
+        self._api = api
+        self._req_id = req_id
+
+    def run(self):
+        try:
+            styles = self._api.get_workspace_styles()
+        except Exception:
+            styles = []
+        self.ready.emit(self._req_id, styles)
+
+
+class _StyleDetailWorker(QThread):
+    """Fetch a style's SLD + legend graphic off the GUI thread."""
+    ready = pyqtSignal(int, str, object)
+
+    def __init__(self, api, style_name, req_id):
+        super().__init__()
+        self._api = api
+        self._style_name = style_name
+        self._req_id = req_id
+
+    def run(self):
+        sld = ""
+        png = None
+        try:
+            sld = self._api.get_style_content(self._style_name) or ""
+            if sld:
+                png = self._api.get_legend_graphic(self._style_name, sld)
+        except Exception:
+            pass
+        self.ready.emit(self._req_id, sld, png)
 
 
 class StylesPage(QWidget):
@@ -21,9 +61,17 @@ class StylesPage(QWidget):
     def __init__(self, api=None):
         super().__init__()
         self.api = api
+        self._list_req = 0
+        self._detail_req = 0
+        self._workers = set()
         self._setup_ui()
         self._setup_connections()
         self._connect_project_signals()
+
+    def _track(self, worker):
+        """Keep a reference to a running worker until it finishes."""
+        self._workers.add(worker)
+        worker.finished.connect(lambda: self._workers.discard(worker))
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -143,11 +191,19 @@ class StylesPage(QWidget):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
-        self.btn_download = QPushButton("⬇  Download SLD")
-        self.btn_apply = QPushButton("▶  Apply style to layer")
+        self.btn_download = QPushButton("  Download SLD")
+        self.btn_apply = QPushButton("  Apply style to layer")
         self.btn_apply.setProperty("primary", "true")
-        self.btn_delete = QPushButton("🗑  Delete style")
+        self.btn_delete = QPushButton("  Delete style")
         self.btn_delete.setProperty("danger", "true")
+
+        for btn, icon_file in (
+            (self.btn_download, "ic_download.svg"),
+            (self.btn_apply, "ic_apply.svg"),
+            (self.btn_delete, "ic_delete.svg"),
+        ):
+            btn.setIcon(themed_icon(icon_file))
+            btn.setIconSize(QSize(16, 16))
 
         self.btn_download.setEnabled(False)
         self.btn_apply.setEnabled(False)
@@ -179,9 +235,10 @@ class StylesPage(QWidget):
         self._load_layers()
 
     def load_styles(self):
-        """Load all styles from the current workspace."""
+        """Load all styles from the current workspace (in the background)."""
         self.lst_styles.clear()
         self.txt_sld_preview.clear()
+        self._clear_legend()
         self.btn_download.setEnabled(False)
         self.btn_apply.setEnabled(False)
         self.btn_delete.setEnabled(False)
@@ -189,7 +246,17 @@ class StylesPage(QWidget):
         if not self.api:
             return
 
-        styles = self.api.get_workspace_styles()
+        self._list_req += 1
+        worker = _StylesListWorker(self.api, self._list_req)
+        worker.ready.connect(self._on_styles_listed)
+        self._track(worker)
+        worker.start()
+
+    def _on_styles_listed(self, req_id, styles):
+        """Populate the style list once the background fetch completes."""
+        if req_id != self._list_req:
+            return  # a newer request superseded this one
+        self.lst_styles.clear()
         self.lst_styles.addItems(styles)
 
     def _load_layers(self, *args):
@@ -213,7 +280,7 @@ class StylesPage(QWidget):
                 self.lst_layers.setCurrentItem(items[0])
 
     def _on_style_selected(self, style_name):
-        """Load SLD preview and legend when a style is selected."""
+        """Load SLD preview and legend when a style is selected (async)."""
         if not style_name or not self.api:
             self.txt_sld_preview.clear()
             self._clear_legend()
@@ -222,12 +289,42 @@ class StylesPage(QWidget):
             self._update_apply_button()
             return
 
-        sld = self.api.get_style_content(style_name)
+        # Optimistic loading state — the network work runs in a worker thread
+        # so the QGIS UI never freezes while the legend is fetched.
+        self.txt_sld_preview.clear()
+        self.btn_download.setEnabled(False)
+        self.btn_delete.setEnabled(False)
+        self.btn_apply.setEnabled(False)
+        self.lbl_legend.setPixmap(QPixmap())
+        self.lbl_legend.setText("Loading…")
+
+        self._detail_req += 1
+        worker = _StyleDetailWorker(self.api, style_name, self._detail_req)
+        worker.ready.connect(self._on_style_detail)
+        self._track(worker)
+        worker.start()
+
+    def _on_style_detail(self, req_id, sld, png_bytes):
+        """Update preview + legend once the background fetch completes."""
+        if req_id != self._detail_req:
+            return  # a newer selection superseded this one
+
         if sld:
             self.txt_sld_preview.setPlainText(sld)
             self.btn_download.setEnabled(True)
             self.btn_delete.setEnabled(True)
-            self._load_legend(sld)
+            if png_bytes:
+                pixmap = QPixmap()
+                pixmap.loadFromData(png_bytes)
+                self.lbl_legend.setPixmap(
+                    pixmap.scaledToWidth(
+                        min(pixmap.width(), self.scroll_legend.width() - 10),
+                        Qt.SmoothTransformation
+                    )
+                )
+                self.lbl_legend.adjustSize()
+            else:
+                self._clear_legend("Could not load legend")
         else:
             self.txt_sld_preview.setPlainText("Could not load SLD content.")
             self._clear_legend()
@@ -235,26 +332,6 @@ class StylesPage(QWidget):
             self.btn_delete.setEnabled(False)
 
         self._update_apply_button()
-
-    def _load_legend(self, sld_content):
-        """Fetch and display the legend graphic from GeoServer."""
-        self.lbl_legend.setText("Loading...")
-        self.lbl_legend.setPixmap(QPixmap())
-
-        style_name = self.lst_styles.currentItem().text()
-        png_bytes = self.api.get_legend_graphic(style_name, sld_content)
-        if png_bytes:
-            pixmap = QPixmap()
-            pixmap.loadFromData(png_bytes)
-            self.lbl_legend.setPixmap(
-                pixmap.scaledToWidth(
-                    min(pixmap.width(), self.scroll_legend.width() - 10),
-                    Qt.SmoothTransformation
-                )
-            )
-            self.lbl_legend.adjustSize()
-        else:
-            self._clear_legend("Could not load legend")
 
     def _clear_legend(self, text="Select a style\nto load legend"):
         """Reset the legend panel to its placeholder state."""

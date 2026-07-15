@@ -16,29 +16,15 @@ class StyleSync:
         self.api = api
         self.exporter = SLDExporter()
 
-    def sync_layer(self, layer, only_existing=False, assign_style=True):
-        """
-        Sync the style of a single QGIS layer to GeoServer.
+    # ── Local export (must run on the GUI thread) ────────────────────
 
-        Args:
-            layer: QGIS layer to sync
-            only_existing: skip layers not found in GeoServer
-            assign_style: if True, assign the style to the layer after upload
-                          if False, only upload the style without assigning it
+    def prepare_layer(self, layer):
+        """
+        Export a layer's SLD locally. This touches the QGIS layer object, so
+        it must be called on the main/GUI thread. Returns a job dict with the
+        exported SLD, or an ERROR result dict if the export failed.
         """
         layer_name = layer.name()
-
-        # Check if layer exists in GeoServer
-        layer_exists = self.api.layer_exists(layer_name)
-
-        if only_existing and not layer_exists:
-            return {
-                'status': self.SKIPPED,
-                'layer': layer_name,
-                'message': 'Layer does not exist in GeoServer'
-            }
-
-        # Export SLD
         sld_content = SLDExporter.export_layer_style(layer)
         if sld_content is None:
             return {
@@ -46,11 +32,42 @@ class StyleSync:
                 'layer': layer_name,
                 'message': 'Could not export SLD from QGIS'
             }
+        _, content_type = SLDExporter.detect_sld_version(sld_content)
+        return {
+            'layer': layer_name,
+            'sld_content': sld_content,
+            'content_type': content_type,
+        }
 
-        # Detect SLD version
-        version, content_type = SLDExporter.detect_sld_version(sld_content)
+    def prepare_layers(self, layers):
+        """Export SLDs for several layers (GUI thread). Returns a job list."""
+        vector_layers = [l for l in layers if l.type() == l.VectorLayer]
+        return [self.prepare_layer(l) for l in vector_layers]
 
-        # Check if style has changed
+    # ── Network sync (safe to run off the GUI thread) ────────────────
+
+    def sync_layer(self, layer, only_existing=False, assign_style=True):
+        """Sync the style of a single QGIS layer to GeoServer."""
+        prepared = self.prepare_layer(layer)
+        if prepared.get('status') == self.ERROR:
+            return prepared
+        return self._sync_prepared_one(prepared, only_existing, assign_style)
+
+    def _sync_prepared_one(self, prepared, only_existing=False,
+                           assign_style=True):
+        """Upload/assign an already-exported SLD. Network only, thread-safe."""
+        layer_name = prepared['layer']
+        sld_content = prepared['sld_content']
+        content_type = prepared['content_type']
+
+        layer_exists = self.api.layer_exists(layer_name)
+        if only_existing and not layer_exists:
+            return {
+                'status': self.SKIPPED,
+                'layer': layer_name,
+                'message': 'Layer does not exist in GeoServer'
+            }
+
         current_sld = self.api.get_style_content(layer_name)
         if current_sld and current_sld.strip() == sld_content.strip():
             return {
@@ -59,7 +76,6 @@ class StyleSync:
                 'message': 'Style has not changed, skipping upload'
             }
 
-        # Upload style
         success, action, response = self.api.upload_style(
             layer_name, sld_content, content_type
         )
@@ -70,7 +86,6 @@ class StyleSync:
                 'message': f'Error uploading style: {response.status_code}'
             }
 
-        # Assign style to layer only if requested
         if assign_style and layer_exists:
             assigned = self.api.assign_style(layer_name, layer_name)
             if not assigned:
@@ -91,52 +106,54 @@ class StyleSync:
             'message': f'Style {action} (not assigned to layer)'
         }
 
-    def sync_layers(self, layers, only_existing=False, assign_style=True):
+    def sync_prepared(self, prepared_list, only_existing=False,
+                      assign_style=True):
         """
-        Sync styles for a list of QGIS layers.
-
-        Args:
-            layers: list of QGIS layers to sync
-            only_existing: skip layers not found in GeoServer
-            assign_style: if True, assign styles to layers after upload
-                          if False, only upload styles without assigning
+        Run the network part of a sync for a list of prepared jobs. Safe to
+        call from a worker thread — it performs no local QGIS layer access.
         """
-        # No layers in project
-        if not layers:
-            return [], {
-                'total': 0,
-                'success': 0,
-                'skipped': 0,
-                'errors': 0,
-                'message': 'No layers found in project'
-            }
+        if not prepared_list:
+            return [], self._empty_summary('No layers found in project')
 
-        # No vector layers selected
-        vector_layers = [l for l in layers if l.type() == l.VectorLayer]
-        if not vector_layers:
-            return [], {
-                'total': 0,
-                'success': 0,
-                'skipped': 0,
-                'errors': 0,
-                'message': 'No vector layers selected'
-            }
-
-        # No active connection to GeoServer
         if not self.api.test_connection():
-            return [], {
-                'total': 0,
-                'success': 0,
-                'skipped': 0,
-                'errors': 0,
-                'message': 'No active connection to GeoServer'
-            }
+            return [], self._empty_summary('No active connection to GeoServer')
 
         results = []
-        for layer in vector_layers:
-            result = self.sync_layer(layer, only_existing, assign_style)
-            results.append(result)
+        for prepared in prepared_list:
+            # Pass through export errors produced on the GUI thread.
+            if prepared.get('status') == self.ERROR:
+                results.append(prepared)
+                continue
+            results.append(
+                self._sync_prepared_one(prepared, only_existing, assign_style)
+            )
 
+        return results, self._summarize(results, assign_style)
+
+    def sync_layers(self, layers, only_existing=False, assign_style=True):
+        """
+        Sync styles for a list of QGIS layers (exports locally, then network).
+        Kept for callers that run entirely on the GUI thread.
+        """
+        if not layers:
+            return [], self._empty_summary('No layers found in project')
+
+        prepared = self.prepare_layers(layers)
+        if not prepared:
+            return [], self._empty_summary('No vector layers selected')
+
+        return self.sync_prepared(prepared, only_existing, assign_style)
+
+    # ── Summaries ────────────────────────────────────────────────────
+
+    @staticmethod
+    def _empty_summary(message):
+        return {
+            'total': 0, 'success': 0, 'skipped': 0, 'errors': 0,
+            'message': message,
+        }
+
+    def _summarize(self, results, assign_style):
         summary = {
             'total': len(results),
             'success': sum(1 for r in results if r['status'] == self.SUCCESS),
@@ -145,7 +162,6 @@ class StyleSync:
             'message': None
         }
 
-        # Automatic summary message
         if summary['errors'] == 0 and summary['skipped'] == 0:
             if assign_style:
                 summary['message'] = (
@@ -167,4 +183,4 @@ class StyleSync:
                 f"{summary['skipped']} skipped"
             )
 
-        return results, summary
+        return summary
