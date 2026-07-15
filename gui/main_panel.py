@@ -1,10 +1,12 @@
+import os
+
 from qgis.PyQt.QtWidgets import (
     QDialog, QWidget, QHBoxLayout,
     QVBoxLayout, QListWidget, QListWidgetItem,
     QStackedWidget, QComboBox, QLabel,
     QFrame, QSizePolicy
 )
-from qgis.PyQt.QtGui import QColor
+from qgis.PyQt.QtGui import QColor, QIcon
 from qgis.PyQt.QtCore import Qt, QSize
 
 from core.connection_manager import ConnectionManager
@@ -29,6 +31,12 @@ class MainPanel(QDialog):
             Qt.Window | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint
         )
         self.setWindowTitle("Style Reloader for GeoServer")
+        # Use the plugin's own icon in the window title bar (not the QGIS one).
+        icon_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            'assets', 'icons', 'reload.png'
+        )
+        self.setWindowIcon(QIcon(icon_path))
         self.setMinimumSize(700, 500)
         self.iface = iface
         self.api = None

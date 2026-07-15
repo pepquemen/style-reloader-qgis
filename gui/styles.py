@@ -5,6 +5,15 @@ Provides a consistent modern look across all UI components while remaining
 compatible with QGIS light, dark, and system themes.
 """
 
+import os
+
+# Absolute path to the icons folder, with forward slashes so it can be used
+# inside Qt stylesheet url(...) values on every platform.
+_ICONS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    'assets', 'icons'
+).replace('\\', '/')
+
 # ── Color palette ────────────────────────────────────────────────────────
 BRAND = "#1d4780"           # Primary brand color (sidebar, accent buttons)
 BRAND_HOVER = "#2a5fa8"     # Lighter brand on hover
@@ -150,11 +159,10 @@ QComboBox::drop-down {{
 }}
 
 QComboBox::down-arrow {{
-    image: none;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 6px solid palette(mid);
-    margin-right: 6px;
+    image: url("{_ICONS_DIR}/ic_chevron_down.svg");
+    width: 14px;
+    height: 14px;
+    margin-right: 8px;
 }}
 
 QComboBox QAbstractItemView {{
@@ -257,7 +265,7 @@ QCheckBox::indicator:hover {{
 QCheckBox::indicator:checked {{
     background: {BRAND};
     border: 1px solid {BRAND};
-    image: none;
+    image: url("{_ICONS_DIR}/ic_check.svg");
 }}
 
 /* ── Dock widget ────────────────────────────────────────────────────── */

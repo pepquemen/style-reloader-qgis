@@ -28,7 +28,8 @@ class GeoServerAPI:
         # requests.Session is not safe to share across threads, so keep one
         # session per thread. Legend/style fetches run in worker threads.
         self._local = threading.local()
-        self._style_layer_cache = {}  # {workspace: {style_name: layer_name}}
+        self._sample_layer_cache = {}  # {workspace: 'ws:layer' or None}
+        self._global_sample_layer = False  # False = not fetched yet
 
     def _session(self):
         """Return a per-thread requests.Session (connection reuse, safe)."""
@@ -181,69 +182,83 @@ class GeoServerAPI:
         r = self._request("DELETE", url, params={"purge": "true"})
         return r.status_code == 200
 
-    def find_layer_for_style(self, style_name):
+    def _sample_layer_of(self, workspace):
         """
-        Find the first layer in the workspace that uses the given style
-        (as default or alternate). Results are cached per workspace.
-        Returns '{workspace}:{layer_name}' or None.
+        Return '{workspace}:{layer}' for any published layer in the given
+        workspace, or None. Cached per workspace (one request at most).
         """
-        cache = self._style_layer_cache.setdefault(self.workspace, {})
-        if style_name in cache:
-            return cache[style_name]
+        if workspace in self._sample_layer_cache:
+            return self._sample_layer_cache[workspace]
 
+        sample = None
         try:
             r = self._request(
                 "GET",
-                f"{self.url}/rest/workspaces/{_seg(self.workspace)}/layers.json",
+                f"{self.url}/rest/workspaces/{_seg(workspace)}/layers.json",
                 timeout=10,
             )
-            if r.status_code != 200:
-                return None
-
-            layer_names = [
-                l['name']
-                for l in r.json().get('layers', {}).get('layer', [])
-            ]
-
-            for name in layer_names:
-                rd = self._request(
-                    "GET",
-                    f"{self.url}/rest/workspaces/{_seg(self.workspace)}"
-                    f"/layers/{_seg(name)}.json",
-                    timeout=10,
-                )
-                if rd.status_code != 200:
-                    continue
-
-                layer_data = rd.json().get('layer', {})
-                default = layer_data.get('defaultStyle', {}).get('name', '')
-                alternates = [
-                    s.get('name', '')
-                    for s in layer_data.get('styles', {}).get('style', [])
-                ]
-                used_styles = [default] + alternates
-
-                # GeoServer may return 'workspace:style' or just 'style'
-                for used in used_styles:
-                    bare = used.split(':')[-1]
-                    if bare == style_name or used == style_name:
-                        qualified = f"{self.workspace}:{name}"
-                        cache[style_name] = qualified
-                        return qualified
+            if r.status_code == 200:
+                layers = r.json().get('layers', {}).get('layer', [])
+                if layers:
+                    sample = f"{workspace}:{layers[0]['name']}"
         except Exception as e:
-            print(f"[find_layer_for_style] exception: {e}")
+            print(f"[_sample_layer_of] exception: {e}")
 
-        cache[style_name] = None
-        return None
+        self._sample_layer_cache[workspace] = sample
+        return sample
+
+    def _get_sample_layer(self):
+        """
+        Return a '{workspace}:{layer}' to use only as a rendering context for
+        GetLegendGraphic (the legend itself is drawn from SLD_BODY, so the
+        layer's workspace/geometry does not affect the result).
+
+        Prefers a layer in the active workspace; if it has none (e.g. a
+        styles-only workspace), falls back to any published layer in any
+        workspace. Both lookups are cached, so after the first legend it costs
+        zero extra requests — no per-layer scanning.
+        """
+        # 1) A layer in the active workspace (best locality).
+        sample = self._sample_layer_of(self.workspace)
+        if sample:
+            return sample
+
+        # 2) Any layer in any workspace, resolved once and cached per session.
+        if self._global_sample_layer is not False:
+            return self._global_sample_layer
+
+        result = None
+        try:
+            r = self._request(
+                "GET", f"{self.url}/rest/workspaces.json", timeout=10
+            )
+            if r.status_code == 200:
+                workspaces = r.json().get('workspaces', {}).get('workspace', [])
+                for w in workspaces:
+                    candidate = self._sample_layer_of(w['name'])
+                    if candidate:
+                        result = candidate
+                        break
+        except Exception as e:
+            print(f"[_get_sample_layer:global] exception: {e}")
+
+        self._global_sample_layer = result
+        return result
 
     def get_legend_graphic(self, style_name, sld_content):
         """
         Fetch a legend graphic from GeoServer using SLD_BODY via POST.
-        Tries {workspace}:{style_name} first; falls back to searching
-        for any layer that uses the style.
+
+        GeoServer's GetLegendGraphic requires a LAYER, but the legend is drawn
+        from SLD_BODY, so the layer only provides a rendering context. We try a
+        layer named like the style first (most faithful); if there is none, we
+        fall back to any published layer in the workspace (cached). This lets
+        legends work for styles not assigned to any layer, without scanning
+        every layer in the workspace.
+
         Returns raw PNG bytes, or None on failure.
         """
-        def _request(layer_qualified):
+        def _legend(layer_qualified):
             r = self._request(
                 "POST",
                 f"{self.url}/wms",
@@ -263,15 +278,15 @@ class GeoServerAPI:
             return None
 
         try:
-            # Fast path: layer with same name as style
-            result = _request(f"{self.workspace}:{style_name}")
+            # Fast path: a layer named like the style (best rendering context).
+            result = _legend(f"{self.workspace}:{style_name}")
             if result:
                 return result
 
-            # Slow path: find a layer that uses this style
-            layer = self.find_layer_for_style(style_name)
-            if layer:
-                return _request(layer)
+            # Fallback: any published layer in the workspace (cached, 1 request).
+            sample = self._get_sample_layer()
+            if sample:
+                return _legend(sample)
         except Exception as e:
             print(f"[LegendGraphic] exception: {e}")
 
