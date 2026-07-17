@@ -41,8 +41,10 @@ class StyleSync:
 
     def prepare_layers(self, layers):
         """Export SLDs for several layers (GUI thread). Returns a job list."""
-        vector_layers = [l for l in layers if l.type() == l.VectorLayer]
-        return [self.prepare_layer(l) for l in vector_layers]
+        vector_layers = [
+            layer for layer in layers if layer.type() == layer.VectorLayer
+        ]
+        return [self.prepare_layer(layer) for layer in vector_layers]
 
     # ── Network sync (safe to run off the GUI thread) ────────────────
 

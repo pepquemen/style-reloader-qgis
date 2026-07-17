@@ -190,7 +190,10 @@ class ReloadPage(QWidget):
 
         # Match names to actual QGIS layers
         all_layers = QgsProject.instance().mapLayers().values()
-        return [l for l in all_layers if l.name() in checked_names]
+        return [
+            layer for layer in all_layers
+            if layer.name() in checked_names
+        ]
 
     def _on_reload(self):
         """Export SLDs (GUI thread) then publish to GeoServer in background."""

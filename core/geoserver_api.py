@@ -1,6 +1,5 @@
 import threading
 from urllib.parse import quote
-from xml.sax.saxutils import escape as xml_escape
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -9,6 +8,16 @@ from requests.auth import HTTPBasicAuth
 def _seg(value):
     """URL-encode a single path segment (no slashes allowed through)."""
     return quote(str(value), safe='')
+
+
+def xml_escape(value):
+    """Escape &, < and > for safe inclusion in XML text (no XML parsing)."""
+    return (
+        str(value)
+        .replace('&', '&amp;')
+        .replace('<', '&lt;')
+        .replace('>', '&gt;')
+    )
 
 
 class GeoServerAPI:

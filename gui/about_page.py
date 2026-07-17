@@ -177,6 +177,6 @@ class AboutPage(QWidget):
                 for line in f:
                     if line.startswith('version='):
                         return line.split('=')[1].strip()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[AboutPage] could not read version: {e}")
         return "1.0.0"

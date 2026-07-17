@@ -45,8 +45,8 @@ class _StyleDetailWorker(QThread):
             sld = self._api.get_style_content(self._style_name) or ""
             if sld:
                 png = self._api.get_legend_graphic(self._style_name, sld)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[StyleDetailWorker] exception: {e}")
         self.ready.emit(self._req_id, sld, png)
 
 
