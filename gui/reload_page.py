@@ -4,6 +4,8 @@ from qgis.PyQt.QtWidgets import (
     QCheckBox, QLabel, QTextEdit, QFrame,
     QSizePolicy
 )
+from html import escape as _esc
+
 from qgis.PyQt.QtCore import Qt, QSize, QThread, pyqtSignal
 from qgis.PyQt.QtGui import QFont
 from qgis.core import QgsProject, QgsMapLayer
@@ -246,13 +248,13 @@ class ReloadPage(QWidget):
             self._log_info(f"─── {summary['message']} ───")
 
     def _log_success(self, message):
-        self.txt_log.append(f'<span style="color: #10b981;">✓ {message}</span>')
+        self.txt_log.append(f'<span style="color: #10b981;">✓ {_esc(str(message))}</span>')
 
     def _log_error(self, message):
-        self.txt_log.append(f'<span style="color: #ef4444;">✗ {message}</span>')
+        self.txt_log.append(f'<span style="color: #ef4444;">✗ {_esc(str(message))}</span>')
 
     def _log_warning(self, message):
-        self.txt_log.append(f'<span style="color: #f59e0b;">⚠ {message}</span>')
+        self.txt_log.append(f'<span style="color: #f59e0b;">⚠ {_esc(str(message))}</span>')
 
     def _log_info(self, message):
-        self.txt_log.append(f'<span style="color: #64748b;">{message}</span>')
+        self.txt_log.append(f'<span style="color: #64748b;">{_esc(str(message))}</span>')

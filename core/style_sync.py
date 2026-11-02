@@ -31,6 +31,10 @@ class StyleSync:
                 'status': self.ERROR,
                 'layer': layer_name,
                 'message': 'Could not export SLD from QGIS'
+                           + (f' — {SLDExporter.last_error}'
+                              if SLDExporter.last_error else '')
+                           + ' (details in View → Panels → Log Messages → '
+                             '"Style Reloader")'
             }
         _, content_type = SLDExporter.detect_sld_version(sld_content)
         return {
@@ -86,7 +90,9 @@ class StyleSync:
             return {
                 'status': self.ERROR,
                 'layer': layer_name,
-                'message': f'Error uploading style: {response.status_code}'
+                'message': (f'Error uploading style: HTTP {getattr(response, "status_code", "?")}'
+                            + (f' — {(response.text or "").strip()[:300]}'
+                               if getattr(response, 'text', None) else ''))
             }
 
         if assign_style and layer_exists:
