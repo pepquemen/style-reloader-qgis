@@ -32,11 +32,17 @@ to push QGIS symbology to the server and pull server styles back into a project.
   **encrypted** in the QGIS Authentication Manager, never in plain text.
 - **Workspace selector** — switch the active workspace at runtime and work against its styles.
 - **Browse styles** — list every style in a workspace, preview its SLD and its rendered legend.
-- **Apply to layers** — apply a GeoServer style to a layer in your current project (vector layers; raster support depends on QGIS's SLD reader).
+- **Vector and raster layers** — publish the symbology of vector layers and of raster layers
+  (single band pseudocolor, single band gray and paletted renderers).
+- **Apply to layers** — apply a GeoServer style to a layer in your current project
+  (vector layers; for rasters it depends on QGIS's limited SLD reader).
 - **Download SLD** — save any server style to disk as an `.sld` file.
 - **Publish / reload** — export QGIS layer symbology to SLD and push it to GeoServer in bulk,
   optionally assigning the uploaded style to the matching layer.
 - **Right-click reload** — reload the style of a single layer straight from the layer tree.
+- **Clear error reporting** — when QGIS can't export a style to SLD (e.g. an unsupported
+  label or symbol setting) the log shows QGIS's own reason, also written to
+  *View ▸ Panels ▸ Log Messages ▸ Style Reloader*; failed uploads show GeoServer's response.
 - **Non-blocking UI** — legend previews and publishing run in background threads, so QGIS
   stays responsive even against slow servers or large workspaces.
 
@@ -48,15 +54,26 @@ to push QGIS symbology to the server and pull server styles back into a project.
 
 ## Installation
 
-**From a ZIP**
+**From the official QGIS plugin repository (recommended)**
+
+The plugin is published in the official QGIS plugin repository, so QGIS keeps it updated:
+
+1. In QGIS open *Plugins ▸ Manage and Install Plugins… ▸ All*.
+2. Search for **Style Reloader for GeoServer**.
+3. Click *Install Plugin*.
+
+**From a ZIP** (development versions)
 
 1. Download this repository as a ZIP.
 2. In QGIS open *Plugins ▸ Manage and Install Plugins… ▸ Install from ZIP*.
 3. Select the ZIP and click *Install Plugin*.
 
-**Manual**
+> Don't install the same plugin both ways: QGIS would load two copies. Uninstall the
+> official version from the Plugin Manager before using a ZIP or a git clone.
 
-Copy the plugin folder into your QGIS profile plugins directory and enable it from the
+**Manual / git clone** (for development)
+
+Copy (or `git clone`) the plugin folder into your QGIS profile plugins directory and enable it from the
 Plugin Manager:
 
 | OS | Path |
@@ -74,8 +91,9 @@ Plugin Manager:
 3. Pick a **connection** and a **workspace** from the header.
 4. Use **Styles** to browse server styles, preview their SLD and legend, download them,
    or apply them to your project layers.
-5. Use **Publication** to select project layers and push their styles to GeoServer,
-   with the option to assign each style to its layer.
+5. Use **Publication** to select project layers (vector or raster) and push their styles
+   to GeoServer, with the option to assign each style to its layer. If a layer fails, the
+   log line explains why.
 
 > **Tip:** always connect over **HTTPS**. Over plain HTTP the credentials travel using
 > HTTP Basic Auth and can be intercepted; the plugin will warn you before saving an
