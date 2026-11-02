@@ -260,7 +260,7 @@ class StylesPage(QWidget):
         self.lst_styles.addItems(styles)
 
     def _load_layers(self, *args):
-        """Load all vector layers from the current QGIS project."""
+        """Load all vector and raster layers from the current QGIS project."""
         current = self.lst_layers.currentItem()
         current_name = current.text() if current else None
 
@@ -268,7 +268,7 @@ class StylesPage(QWidget):
 
         layers = [
             layer for layer in QgsProject.instance().mapLayers().values()
-            if layer.type() == layer.VectorLayer
+            if layer.type() in (layer.VectorLayer, layer.RasterLayer)
         ]
         for layer in layers:
             self.lst_layers.addItem(layer.name())
@@ -375,6 +375,12 @@ class StylesPage(QWidget):
         layer = matched[0]
 
         success, error_msg = SLDExporter.apply_sld_to_layer(layer, sld_content)
+        if not success and layer.type() == layer.RasterLayer:
+            error_msg = (
+                (error_msg + "\n\n" if error_msg else "")
+                + "QGIS has limited support for reading SLD styles on raster "
+                "layers; publishing raster styles to GeoServer is supported."
+            )
 
         if success:
             QMessageBox.information(

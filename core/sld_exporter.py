@@ -58,6 +58,13 @@ class SLDExporter:
             sld = f.read()
 
         os.unlink(tmp.name)
+
+        # Raster layers: QGIS only exports some renderers (single band
+        # pseudocolor/gray, paletted, ...). Without a RasterSymbolizer the
+        # SLD would publish an empty style, so treat it as a failed export.
+        if layer.type() == layer.RasterLayer and 'RasterSymbolizer' not in sld:
+            print("[SLDExporter] Raster renderer not exportable to SLD")
+            return None
         return sld
 
     @staticmethod

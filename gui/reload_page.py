@@ -153,11 +153,11 @@ class ReloadPage(QWidget):
         self.api = api
 
     def load_layers(self):
-        """Load all vector layers from the current QGIS project."""
+        """Load all vector and raster layers from the current QGIS project."""
         self.lst_layers.clear()
         layers = QgsProject.instance().mapLayers().values()
         for layer in layers:
-            if layer.type() == QgsMapLayer.VectorLayer:
+            if layer.type() in (QgsMapLayer.VectorLayer, QgsMapLayer.RasterLayer):
                 item = QListWidgetItem(layer.name())
                 item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
                 item.setCheckState(Qt.Checked)

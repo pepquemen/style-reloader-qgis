@@ -13,12 +13,13 @@ class LayerMatcher:
 
     def get_project_vector_layers(self):
         """
-        Return all vector layers loaded in the current QGIS project.
+        Return all styleable (vector and raster) layers loaded in the
+        current QGIS project. Name kept for backwards compatibility.
         """
         layers = QgsProject.instance().mapLayers().values()
         return [
             layer for layer in layers
-            if layer.type() == QgsMapLayer.VectorLayer
+            if layer.type() in (QgsMapLayer.VectorLayer, QgsMapLayer.RasterLayer)
         ]
 
     def get_geoserver_name(self, layer_name):

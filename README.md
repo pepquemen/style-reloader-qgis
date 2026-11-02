@@ -32,7 +32,7 @@ to push QGIS symbology to the server and pull server styles back into a project.
   **encrypted** in the QGIS Authentication Manager, never in plain text.
 - **Workspace selector** — switch the active workspace at runtime and work against its styles.
 - **Browse styles** — list every style in a workspace, preview its SLD and its rendered legend.
-- **Apply to layers** — apply a GeoServer style to any vector layer in your current project.
+- **Apply to layers** — apply a GeoServer style to a layer in your current project (vector layers; raster support depends on QGIS's SLD reader).
 - **Download SLD** — save any server style to disk as an `.sld` file.
 - **Publish / reload** — export QGIS layer symbology to SLD and push it to GeoServer in bulk,
   optionally assigning the uploaded style to the matching layer.

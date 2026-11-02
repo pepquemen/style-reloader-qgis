@@ -41,10 +41,11 @@ class StyleSync:
 
     def prepare_layers(self, layers):
         """Export SLDs for several layers (GUI thread). Returns a job list."""
-        vector_layers = [
-            layer for layer in layers if layer.type() == layer.VectorLayer
+        styleable = [
+            layer for layer in layers
+            if layer.type() in (layer.VectorLayer, layer.RasterLayer)
         ]
-        return [self.prepare_layer(layer) for layer in vector_layers]
+        return [self.prepare_layer(layer) for layer in styleable]
 
     # ── Network sync (safe to run off the GUI thread) ────────────────
 
@@ -142,7 +143,7 @@ class StyleSync:
 
         prepared = self.prepare_layers(layers)
         if not prepared:
-            return [], self._empty_summary('No vector layers selected')
+            return [], self._empty_summary('No layers selected')
 
         return self.sync_prepared(prepared, only_existing, assign_style)
 
